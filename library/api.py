@@ -249,7 +249,7 @@ class TransientHLSAssetAPIView(APIView):
     """
     permission_classes = [AllowAny]
     TOKEN_SALT = "library.transient-hls-asset"
-    TOKEN_MAX_AGE_SECONDS = 600
+    TOKEN_MAX_AGE_SECONDS = 10800
 
     @classmethod
     def make_token(cls, session):

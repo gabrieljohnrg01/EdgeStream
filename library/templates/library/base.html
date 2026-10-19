@@ -51,6 +51,9 @@
                 <a href="/movies/" class="nav-item {% if request.path == '/movies/' %}active{% endif %}">
                     <i class="bi bi-film"></i> Movies
                 </a>
+                <a href="{% url 'tmdb_catalog' %}" class="nav-item {% if '/catalog/' in request.path %}active{% endif %}">
+                    <i class="bi bi-collection"></i> TMDB Catalog
+                </a>
                 {% if user.is_authenticated %}
                 <a href="{% url 'transient_streams' %}" class="nav-item {% if '/transient-streams/' in request.path %}active{% endif %}">
                     <i class="bi bi-play-circle"></i> Transient Streams

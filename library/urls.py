@@ -11,6 +11,8 @@ urlpatterns = [
     path("series/<int:series_pk>/<int:season_number>/<int:episode_number>/", views.episode_playback, name="episode_playback"),
     path("movie/<int:pk>/", views.movie_detail, name="movie_detail"),
     path("movie/<int:pk>/play/", views.movie_playback, name="movie_playback"),
+    path("transient-streams/", views.transient_streams_view, name="transient_streams"),
+    path("transient-streams/<uuid:session_id>/play/", views.transient_stream_playback, name="transient_stream_playback"),
 
     path("search/", views.search, name="search"),
     path("account-select/", views.account_select, name="account_select"),

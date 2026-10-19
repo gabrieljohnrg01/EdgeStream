@@ -10,6 +10,7 @@
     <form method="get" action="{% url 'tmdb_catalog' %}" style="display:flex; gap:8px; flex-wrap:wrap;">
       <input type="search" name="q" value="{{ catalog_query }}" placeholder="Search catalog..." style="padding:12px 14px; min-width:220px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:inherit;">
       <input type="hidden" name="type" value="{{ catalog_type }}">
+      <input type="hidden" name="section" value="{{ catalog_section }}">
       <button type="submit" style="padding:12px 16px; border:0; border-radius:8px; background:var(--accent-crimson); color:white; font-weight:700;">Search</button>
     </form>
   </div>

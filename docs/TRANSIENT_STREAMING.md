@@ -17,6 +17,17 @@ and deletes its source file after a successful conversion.
 - The frontend may be deployed separately from the backend; API URLs, CORS, and
   temporary HLS URLs therefore need explicit configuration and access controls.
 
+## Session API (metadata only)
+
+The authenticated endpoints are now registered:
+
+- GET /api/transient-streams/ — list the signed-in user's latest sessions.
+- POST /api/transient-streams/ with JSON containing a magnet_uri — validate and create a pending session.
+- GET /api/transient-streams/<uuid>/ — read a session owned by the signed-in user.
+- POST /api/transient-streams/<uuid>/ — stop the session and scrub its magnet metadata.
+
+Creation is limited to two unexpired pending/starting/active sessions per user and gives each session a three-hour TTL. Responses do not expose magnet URIs. Other users' session IDs return 404. **These endpoints only manage session metadata: creation does not download a torrent or return a playable URL until the worker is implemented.**
+
 ## Session persistence and expiry
 
 `TransientStreamSession` now provides a separate owner-scoped database record with a UUID, lifecycle status, expiry timestamp, and private magnet metadata. The `cleanup_transient_streams` management command marks expired sessions stopped and scrubs their magnet/file metadata. It intentionally does not delete any media files. A future worker supervisor must terminate its child process and remove only the validated session directory before physical cleanup can safely be enabled.

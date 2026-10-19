@@ -1,0 +1,56 @@
+{% extends "library/base.html" %}
+{% block content %}
+<section style="max-width: 1500px; margin: 0 auto; padding: 24px 0;">
+  <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px;">
+    <div>
+      <p style="color:var(--accent-crimson); font-weight:700; letter-spacing:2px; margin:0 0 8px;">DISCOVER</p>
+      <h1 style="margin:0 0 8px; font-size:clamp(1.8rem,4vw,2.6rem);">TMDB Catalog</h1>
+      <p style="color:var(--text-muted-gray); margin:0;">Explore movie and TV metadata. Catalog entries are not necessarily available to play locally.</p>
+    </div>
+    <form method="get" action="{% url 'tmdb_catalog' %}" style="display:flex; gap:8px; flex-wrap:wrap;">
+      <input type="search" name="q" value="{{ catalog_query }}" placeholder="Search catalog..." style="padding:12px 14px; min-width:220px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:inherit;">
+      <input type="hidden" name="type" value="{{ catalog_type }}">
+      <button type="submit" style="padding:12px 16px; border:0; border-radius:8px; background:var(--accent-crimson); color:white; font-weight:700;">Search</button>
+    </form>
+  </div>
+
+  <nav style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+    {% for value,label in catalog_section_choices %}
+      <a href="?section={{ value }}&type={{ catalog_type }}" style="padding:9px 13px; border-radius:999px; text-decoration:none; border:1px solid rgba(255,255,255,.15); {% if catalog_section == value %}background:var(--accent-crimson); color:white;{% else %}color:inherit;{% endif %}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <nav style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px;">
+    <a href="?section={{ catalog_section }}&type=ALL" style="padding:8px 12px; border-radius:7px; text-decoration:none; color:inherit; border:1px solid rgba(255,255,255,.15);">All</a>
+    <a href="?section={{ catalog_section }}&type=MOVIE" style="padding:8px 12px; border-radius:7px; text-decoration:none; color:inherit; border:1px solid rgba(255,255,255,.15);">Movies</a>
+    <a href="?section={{ catalog_section }}&type=TV" style="padding:8px 12px; border-radius:7px; text-decoration:none; color:inherit; border:1px solid rgba(255,255,255,.15);">TV Shows</a>
+  </nav>
+
+  {% if catalog_titles %}
+  <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:18px;">
+    {% for item in catalog_titles %}
+    <article style="min-width:0; overflow:hidden; border-radius:10px; background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.08);">
+      <a href="https://www.themoviedb.org/{% if item.media_type == 'TV' %}tv{% else %}movie{% endif %}/{{ item.tmdb_id }}" target="_blank" rel="noopener noreferrer" style="color:inherit; text-decoration:none;">
+        {% if item.poster_path %}
+        <img src="{{ item.poster_url }}" alt="Poster for {{ item.title }}" loading="lazy" style="width:100%; aspect-ratio:2/3; object-fit:cover; display:block;">
+        {% else %}
+        <div style="aspect-ratio:2/3; display:flex; align-items:center; justify-content:center; padding:12px; background:rgba(255,255,255,.06); text-align:center;">No poster available</div>
+        {% endif %}
+        <div style="padding:12px;">
+          <h2 style="font-size:1rem; line-height:1.35; margin:0 0 7px;">{{ item.title }}</h2>
+          <p style="font-size:.82rem; color:var(--text-muted-gray); margin:0 0 8px;">{% if item.release_date %}{{ item.release_date|date:"Y" }}{% else %}Release date unknown{% endif %} · {% if item.media_type == 'TV' %}TV{% else %}Movie{% endif %}</p>
+          <p style="font-size:.82rem; margin:0;">★ {{ item.vote_average|floatformat:1 }} <span style="color:var(--text-muted-gray);">· {{ item.vote_count }} votes</span></p>
+        </div>
+      </a>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="padding:48px 20px; text-align:center; border:1px dashed rgba(255,255,255,.2); border-radius:12px;">
+    <h2 style="margin-top:0;">Your catalog is empty</h2>
+    <p style="color:var(--text-muted-gray);">Run the TMDB catalog sync command to import trending and popular titles into your local database.</p>
+    <code>python manage.py sync_tmdb_catalog --pages 2</code>
+  </div>
+  {% endif %}
+  <p style="font-size:.8rem; color:var(--text-muted-gray); margin-top:32px;">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+</section>
+{% endblock %}

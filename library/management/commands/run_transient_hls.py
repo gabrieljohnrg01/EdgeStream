@@ -117,6 +117,12 @@ class Command(BaseCommand):
                     except subprocess.TimeoutExpired:
                         os.killpg(process.pid, signal.SIGKILL)
                         process.wait(timeout=5)
+                    session.refresh_from_db()
+                    if session.status != TransientStreamSession.STATUS_STOPPED:
+                        session.status = TransientStreamSession.STATUS_FAILED
+                        session.last_error = "FFmpeg startup timed out."
+                        session.magnet_uri = ""
+                        session.save(update_fields=["status", "last_error", "magnet_uri"])
                     raise CommandError("FFmpeg did not produce a playlist and segment before the startup timeout.")
                 time.sleep(0.5)
 
@@ -130,6 +136,12 @@ class Command(BaseCommand):
                 raise CommandError(f"FFmpeg failed (exit {process.returncode}). Check server logs for details.")
 
             if not activated:
+                session.refresh_from_db()
+                if session.status != TransientStreamSession.STATUS_STOPPED:
+                    session.status = TransientStreamSession.STATUS_FAILED
+                    session.last_error = "FFmpeg finished without producing playable HLS output."
+                    session.magnet_uri = ""
+                    session.save(update_fields=["status", "last_error", "magnet_uri"])
                 raise CommandError("FFmpeg finished without producing playable HLS output.")
             self.stdout.write(self.style.SUCCESS("HLS render completed. Session remains available until expiry or stop."))
         finally:

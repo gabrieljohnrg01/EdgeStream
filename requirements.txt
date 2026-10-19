@@ -6,6 +6,6 @@ guessit>=3.7.1
 imageio-ffmpeg
 djangorestframework
 djangorestframework-simplejwt
-python-libtorrent>=2.0.11
+libtorrent>=2.0.11
 django-cors-headers
 Pillow>=10.0.0

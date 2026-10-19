@@ -4,8 +4,8 @@
   <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:24px;">
     <div>
       <p style="color:var(--accent-crimson); font-weight:700; letter-spacing:2px; margin:0 0 8px;">DISCOVER</p>
-      <h1 style="margin:0 0 8px; font-size:clamp(1.8rem,4vw,2.6rem);">TMDB Catalog</h1>
-      <p style="color:var(--text-muted-gray); margin:0;">Explore movie and TV metadata. Catalog entries are not necessarily available to play locally.</p>
+      <h1 style="margin:0 0 8px; font-size:clamp(1.8rem,4vw,2.6rem);">EdgeStream Catalog</h1>
+      <p style="color:var(--text-muted-gray); margin:0;">Discover movies and TV from the TMDB catalog.</p>
     </div>
     <form method="get" action="{% url 'tmdb_catalog' %}" style="display:flex; gap:8px; flex-wrap:wrap;">
       <input type="search" name="q" value="{{ catalog_query }}" placeholder="Search catalog..." style="padding:12px 14px; min-width:220px; border-radius:8px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:inherit;">

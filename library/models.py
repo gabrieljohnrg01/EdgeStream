@@ -1,248 +1,20 @@
+import uuid
+from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
-from django.contrib.auth.models import User
-import uuid
-class Genre(models.Model):
-    name = models.CharField(max_length=100, unique=True)
-
-    def __str__(self):
-        return self.name
-
 
 class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
-    theme = models.CharField(max_length=50, default='default')
-
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    avatar = models.ImageField(upload_to="avatars/", blank=True, null=True)
+    theme = models.CharField(max_length=50, default="default")
     def __str__(self):
         return f"{self.user.username}'s profile"
 
-
-class Movie(models.Model):
-    title = models.CharField(max_length=255)
-    file_path = models.CharField(max_length=512, unique=True)
-    tmdb_id = models.IntegerField()
-    description = models.TextField(blank=True)
-    poster_url = models.CharField(max_length=512, blank=True)
-    backdrop_url = models.CharField(max_length=512, blank=True)
-    release_date = models.DateField(null=True, blank=True)
-    duration = models.DurationField(null=True, blank=True)
-    date_added = models.DateTimeField(default=timezone.now)
-    watch_count = models.IntegerField(default=0)
-    last_watch_reset = models.DateTimeField(default=timezone.now)
-    is_converted = models.BooleanField(default=False)
-    genres = models.ManyToManyField(Genre, blank=True)
-
-    class Meta:
-        ordering = ["-date_added"]
-
-    def __str__(self):
-        return self.title
-
-    @property
-    def duration_display(self):
-        if not self.duration:
-            return "Unknown duration"
-        total_seconds = int(self.duration.total_seconds())
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        if hours:
-            return f"{hours}h {minutes}m"
-        return f"{minutes}m {seconds}s"
-
-
-class Series(models.Model):
-    title = models.CharField(max_length=255, unique=True)
-    tmdb_id = models.IntegerField()
-    description = models.TextField(blank=True)
-    poster_url = models.CharField(max_length=512, blank=True)
-    backdrop_url = models.CharField(max_length=512, blank=True)
-    release_date = models.DateField(null=True, blank=True)
-    date_added = models.DateTimeField(default=timezone.now)
-    watch_count = models.IntegerField(default=0)
-    last_watch_reset = models.DateTimeField(default=timezone.now)
-    genres = models.ManyToManyField(Genre, blank=True)
-
-    class Meta:
-        ordering = ["-date_added"]
-
-    def __str__(self):
-        return self.title
-
-
-class Season(models.Model):
-    series = models.ForeignKey(Series, on_delete=models.CASCADE, related_name="seasons")
-    season_number = models.IntegerField()
-    poster_url = models.CharField(max_length=512, blank=True)
-
-    class Meta:
-        ordering = ["season_number"]
-        unique_together = ("series", "season_number")
-
-    def __str__(self):
-        return f"{self.series.title} - Season {self.season_number}"
-
-
-class Episode(models.Model):
-    season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="episodes")
-    episode_number = models.IntegerField()
-    title = models.CharField(max_length=255, blank=True)
-    file_path = models.CharField(max_length=512, unique=True)
-    description = models.TextField(blank=True)
-    still_url = models.CharField(max_length=512, blank=True)
-    is_converted = models.BooleanField(default=False)
-
-    class Meta:
-        ordering = ["episode_number"]
-        unique_together = ("season", "episode_number")
-
-    def __str__(self):
-        return f"{self.season} - E{self.episode_number}: {self.title or 'Untitled'}"
-
-
-class ConversionTask(models.Model):
-    STATUS_QUEUED = "QUEUED"
-    STATUS_PROCESSING = "PROCESSING"
-    STATUS_COMPLETED = "COMPLETED"
-    STATUS_FAILED = "FAILED"
-
-    STATUS_CHOICES = [
-        (STATUS_QUEUED, "Queued"),
-        (STATUS_PROCESSING, "Processing"),
-        (STATUS_COMPLETED, "Completed"),
-        (STATUS_FAILED, "Failed"),
-    ]
-
-    file_path = models.CharField(max_length=512)
-    movie = models.ForeignKey('Movie', null=True, blank=True, on_delete=models.CASCADE, related_name='conversion_tasks')
-    episode = models.ForeignKey('Episode', null=True, blank=True, on_delete=models.CASCADE, related_name='conversion_tasks')
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED)
-    progress = models.IntegerField(default=0)
-    error_message = models.TextField(blank=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["created_at"]
-        indexes = [
-            models.Index(fields=["status"]),
-            models.Index(fields=["file_path"]),
-        ]
-
-    @property
-    def file_name(self):
-        import os
-        return os.path.basename(self.file_path)
-
-    def __str__(self):
-        return f"{self.file_path} ({self.status})"
-
-
-# Keep MediaItem for backwards compatibility during transition
-class MediaItem(models.Model):
-    MEDIA_TYPE_MOVIE = "MOVIE"
-    MEDIA_TYPE_SERIES = "SERIES"
-    MEDIA_TYPE_CHOICES = [
-        (MEDIA_TYPE_MOVIE, "Movie"),
-        (MEDIA_TYPE_SERIES, "Series"),
-    ]
-
-    title = models.CharField(max_length=255)
-    file_path = models.CharField(max_length=512, unique=True)
-    media_type = models.CharField(max_length=10, choices=MEDIA_TYPE_CHOICES)
-    tmdb_id = models.IntegerField()
-    description = models.TextField(blank=True)
-    poster_url = models.URLField(blank=True)
-    release_date = models.DateField(null=True, blank=True)
-    date_added = models.DateTimeField(default=timezone.now)
-
-    class Meta:
-        ordering = ["-date_added"]
-
-    def __str__(self):
-        return f"{self.title} ({self.media_type})"
-
-class WatchlistItem(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="watchlist")
-    movie = models.ForeignKey('Movie', null=True, blank=True, on_delete=models.CASCADE)
-    series = models.ForeignKey('Series', null=True, blank=True, on_delete=models.CASCADE)
-    added_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-added_at"]
-
-    def __str__(self):
-        if self.movie:
-            return f"{self.user.username} - {self.movie.title}"
-        if self.series:
-            return f"{self.user.username} - {self.series.title}"
-        return f"{self.user.username} - WatchlistItem"
-
-class PlaybackProgress(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="progress")
-    movie = models.ForeignKey('Movie', null=True, blank=True, on_delete=models.CASCADE)
-    episode = models.ForeignKey('Episode', null=True, blank=True, on_delete=models.CASCADE)
-    timestamp = models.IntegerField(default=0)  # current playback time in seconds
-    last_watched = models.DateTimeField(auto_now=True)
-    is_finished = models.BooleanField(default=False)
-
-    class Meta:
-        unique_together = (("user", "movie"), ("user", "episode"))
-
-    def __str__(self):
-        if self.movie:
-            return f"{self.user.username} - {self.movie.title} ({self.timestamp}s)"
-        if self.episode:
-            return f"{self.user.username} - {self.episode.title} ({self.timestamp}s)"
-        return f"{self.user.username} - Progress"
-
-
-class TransientStreamSession(models.Model):
-    """User-owned, expiring session for temporary torrent-to-HLS playback.
-
-    This model is intentionally separate from Movie/Episode/ConversionTask so
-    transient source files can never enter the permanent library conversion path.
-    """
-    STATUS_PENDING = "PENDING"
-    STATUS_STARTING = "STARTING"
-    STATUS_ACTIVE = "ACTIVE"
-    STATUS_STOPPED = "STOPPED"
-    STATUS_FAILED = "FAILED"
-    STATUS_CHOICES = [
-        (STATUS_PENDING, "Pending"),
-        (STATUS_STARTING, "Starting"),
-        (STATUS_ACTIVE, "Active"),
-        (STATUS_STOPPED, "Stopped"),
-        (STATUS_FAILED, "Failed"),
-    ]
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transient_stream_sessions")
-    # Kept out of API representations and logs; delete/expire session data promptly.
-    magnet_uri = models.TextField()
-    selected_file = models.CharField(max_length=1024, blank=True)
-    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
-    created_at = models.DateTimeField(default=timezone.now, db_index=True)
-    expires_at = models.DateTimeField(db_index=True)
-    stopped_at = models.DateTimeField(null=True, blank=True)
-    last_error = models.CharField(max_length=500, blank=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [models.Index(fields=["user", "status"])]
-
-    def __str__(self):
-        return f"Transient stream {self.pk} ({self.status})"
-
-
-
 class CatalogTitle(models.Model):
-    """TMDB metadata catalog entry; deliberately independent of local playable files."""
+    """TMDB metadata only; no permanent video-file or HLS paths."""
     MEDIA_MOVIE = "MOVIE"
     MEDIA_TV = "TV"
     MEDIA_CHOICES = [(MEDIA_MOVIE, "Movie"), (MEDIA_TV, "TV Show")]
-
     tmdb_id = models.PositiveIntegerField()
     media_type = models.CharField(max_length=8, choices=MEDIA_CHOICES)
     title = models.CharField(max_length=255, db_index=True)
@@ -258,24 +30,59 @@ class CatalogTitle(models.Model):
     genre_ids = models.JSONField(default=list, blank=True)
     sections = models.JSONField(default=list, blank=True)
     last_synced = models.DateTimeField(default=timezone.now, db_index=True)
-
     class Meta:
         ordering = ["-popularity", "title"]
-        constraints = [
-            models.UniqueConstraint(fields=["media_type", "tmdb_id"], name="unique_catalog_media_tmdb_id")
-        ]
-        indexes = [
-            models.Index(fields=["media_type", "-popularity"], name="catalog_media_pop_idx"),
-            models.Index(fields=["media_type", "vote_average"], name="catalog_media_vote_idx"),
-        ]
-
+        constraints = [models.UniqueConstraint(fields=["media_type", "tmdb_id"], name="unique_catalog_media_tmdb_id")]
+        indexes = [models.Index(fields=["media_type", "-popularity"], name="catalog_media_pop_idx"), models.Index(fields=["media_type", "vote_average"], name="catalog_media_vote_idx")]
     @property
     def poster_url(self):
         return f"https://image.tmdb.org/t/p/w500{self.poster_path}" if self.poster_path else ""
-
     @property
     def backdrop_url(self):
         return f"https://image.tmdb.org/t/p/w1280{self.backdrop_path}" if self.backdrop_path else ""
-
     def __str__(self):
         return f"{self.title} ({self.media_type}, TMDB {self.tmdb_id})"
+
+class WatchlistItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="watchlist")
+    catalog_title = models.ForeignKey(CatalogTitle, on_delete=models.CASCADE, related_name="watchlist_items")
+    added_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ["-added_at"]
+        constraints = [models.UniqueConstraint(fields=["user", "catalog_title"], name="unique_user_catalog_watchlist")]
+    def __str__(self):
+        return f"{self.user.username} - {self.catalog_title.title}"
+
+class PlaybackProgress(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="progress")
+    catalog_title = models.ForeignKey(CatalogTitle, on_delete=models.CASCADE, related_name="playback_progress")
+    timestamp = models.IntegerField(default=0)
+    last_watched = models.DateTimeField(auto_now=True)
+    is_finished = models.BooleanField(default=False)
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "catalog_title"], name="unique_user_catalog_progress")]
+    def __str__(self):
+        return f"{self.user.username} - {self.catalog_title.title} ({self.timestamp}s)"
+
+class TransientStreamSession(models.Model):
+    """User-owned expiring torrent-to-HLS session, separate from the TMDB catalog."""
+    STATUS_PENDING = "PENDING"
+    STATUS_STARTING = "STARTING"
+    STATUS_ACTIVE = "ACTIVE"
+    STATUS_STOPPED = "STOPPED"
+    STATUS_FAILED = "FAILED"
+    STATUS_CHOICES = [(STATUS_PENDING, "Pending"), (STATUS_STARTING, "Starting"), (STATUS_ACTIVE, "Active"), (STATUS_STOPPED, "Stopped"), (STATUS_FAILED, "Failed")]
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transient_stream_sessions")
+    magnet_uri = models.TextField()
+    selected_file = models.CharField(max_length=1024, blank=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=500, blank=True)
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "status"])]
+    def __str__(self):
+        return f"Transient stream {self.pk} ({self.status})"

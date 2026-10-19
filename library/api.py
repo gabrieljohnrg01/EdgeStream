@@ -3,22 +3,85 @@ import subprocess
 import sys
 from datetime import timedelta
 from urllib.parse import urlencode
-
 from django.conf import settings
-from django.utils import timezone
-from django.http import FileResponse, Http404, HttpResponse
 from django.core import signing
+from django.http import FileResponse, Http404, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.urls import reverse
-from rest_framework import viewsets, generics, status, filters
-from rest_framework.response import Response
+from django.utils import timezone
+from rest_framework import generics, status, viewsets, filters
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
-from .models import Movie, Series, Season, Episode, WatchlistItem, TransientStreamSession
-from .serializers import MovieSerializer, SeriesSerializer, SeasonSerializer, EpisodeSerializer, UserRegistrationSerializer, WatchlistItemSerializer, ChangePasswordSerializer
+from .models import CatalogTitle, WatchlistItem, PlaybackProgress, TransientStreamSession
+from .serializers import CatalogTitleSerializer, WatchlistItemSerializer, UserRegistrationSerializer, ChangePasswordSerializer
 from .transient_streaming import validate_magnet_uri
 from .transient_streaming_runtime import resolve_hls_asset, session_output_dir
 
+class CatalogTitleViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = CatalogTitleSerializer
+    queryset = CatalogTitle.objects.all()
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["title", "original_title", "overview"]
+    ordering_fields = ["popularity", "vote_average", "release_date", "title"]
+    ordering = ["-popularity", "title"]
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        media_type = self.request.query_params.get("media_type")
+        if media_type in (CatalogTitle.MEDIA_MOVIE, CatalogTitle.MEDIA_TV):
+            queryset = queryset.filter(media_type=media_type)
+        return queryset
+
+class WatchlistViewSet(viewsets.ModelViewSet):
+    serializer_class = WatchlistItemSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+    def get_queryset(self):
+        return WatchlistItem.objects.filter(user=self.request.user).select_related("catalog_title")
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+class RegisterUserAPIView(generics.CreateAPIView):
+    serializer_class = UserRegistrationSerializer
+    permission_classes = [AllowAny]
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        refresh = RefreshToken.for_user(user)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh)}, status=status.HTTP_201_CREATED)
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request, *args, **kwargs):
+        serializer = ChangePasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            user = request.user
+            if user.check_password(serializer.data.get("old_password")):
+                user.set_password(serializer.data.get("new_password"))
+                user.save()
+                return Response({"message": "Password updated successfully."})
+            return Response({"old_password": ["Wrong password."]}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class CatalogProgressAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    def get(self, request):
+        rows = PlaybackProgress.objects.filter(user=request.user).select_related("catalog_title")
+        return Response([{"tmdb_id": x.catalog_title.tmdb_id, "media_type": x.catalog_title.media_type, "timestamp": x.timestamp, "is_finished": x.is_finished, "last_watched": x.last_watched} for x in rows])
+    def post(self, request):
+        try:
+            tmdb_id = int(request.data.get("tmdb_id"))
+            media_type = str(request.data.get("media_type", "")).upper()
+            timestamp = max(0, int(request.data.get("timestamp", 0)))
+        except (TypeError, ValueError):
+            return Response({"detail": "Provide valid tmdb_id, media_type, and timestamp."}, status=400)
+        if media_type not in (CatalogTitle.MEDIA_MOVIE, CatalogTitle.MEDIA_TV):
+            return Response({"detail": "media_type must be MOVIE or TV."}, status=400)
+        title = get_object_or_404(CatalogTitle, tmdb_id=tmdb_id, media_type=media_type)
+        row, _ = PlaybackProgress.objects.update_or_create(user=request.user, catalog_title=title, defaults={"timestamp": timestamp, "is_finished": bool(request.data.get("is_finished", False))})
+        return Response({"tmdb_id": title.tmdb_id, "media_type": title.media_type, "timestamp": row.timestamp, "is_finished": row.is_finished})
 
 def expire_transient_sessions(queryset=None):
     """Expire stale session metadata without touching filesystem paths."""

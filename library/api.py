@@ -1,4 +1,6 @@
+import re
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.utils import timezone
 from django.http import FileResponse, Http404, HttpResponse
@@ -172,7 +174,18 @@ class TransientStreamSessionDetailAPIView(APIView):
         session = self.get_object(request, session_id)
         if session is None:
             return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(TransientStreamSessionListCreateAPIView.serialize_session(session))
+        payload = TransientStreamSessionListCreateAPIView.serialize_session(session)
+        payload["playback_ready"] = False
+        if session.status == TransientStreamSession.STATUS_ACTIVE:
+            token = TransientHLSAssetAPIView.make_token(session)
+            asset_path = reverse("transient_stream_hls_asset", kwargs={
+                "session_id": session.pk,
+                "asset_name": "index.m3u8",
+            })
+            payload["playback_url"] = f"{asset_path}?{urlencode({'token': token})}"
+            payload["playback_ready"] = True
+            payload["playback_url_expires_in"] = TransientHLSAssetAPIView.TOKEN_MAX_AGE_SECONDS
+        return Response(payload)
 
     def post(self, request, session_id):
         """Stop a session. Worker process teardown will be wired in with the supervisor."""

@@ -19,7 +19,7 @@ from django.contrib.auth.decorators import login_required
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import Movie, Series, Season, Episode, MediaItem, ConversionTask, WatchlistItem, PlaybackProgress, Genre
+from .models import Movie, Series, Season, Episode, MediaItem, ConversionTask, WatchlistItem, PlaybackProgress, Genre, TransientStreamSession
 from .tmdb import TMDB_IMAGE_BASE, clean_title, extract_title_year, fetch_tmdb_metadata, parse_date
 
 def webview_login(request):
@@ -726,3 +726,49 @@ def settings_view(request):
             del field.widget.attrs['autofocus']
             
     return render(request, 'library/settings.html', {'form': form, 'profile': profile})
+
+
+@login_required
+def transient_streams_view(request):
+    """Transient torrent-to-HLS page; sessions remain separate from the permanent library."""
+    from django.urls import reverse
+    sessions = TransientStreamSession.objects.filter(user=request.user).order_by("-created_at")[:20]
+    return render(request, "library/transient_streams.html", {
+        "sessions": sessions,
+        "session_api_url": reverse("transient_stream_list_create"),
+    })
+
+
+@login_required
+def transient_stream_playback(request, session_id):
+    """Play an active transient session through EdgeStream's existing movie player UI."""
+    from django.urls import reverse
+    from .api import TransientHLSAssetAPIView, expire_transient_sessions
+
+    expire_transient_sessions(TransientStreamSession.objects.filter(user=request.user))
+    session = get_object_or_404(TransientStreamSession, pk=session_id, user=request.user)
+    if session.status != TransientStreamSession.STATUS_ACTIVE or session.expires_at <= timezone.now():
+        return render(request, "library/transient_stream_waiting.html", {
+            "session": session,
+            "back_url": reverse("transient_streams"),
+        }, status=409)
+
+    token = TransientHLSAssetAPIView.make_token(session)
+    playlist_path = reverse("transient_stream_hls_asset", kwargs={
+        "session_id": session.pk,
+        "asset_name": "index.m3u8",
+    })
+    playback_url = f"{playlist_path}?token={token}"
+    title = Path(session.selected_file).name or "Transient stream"
+    return render(request, "library/movie_playback.html", {
+        "transient_mode": True,
+        "transient_title": title,
+        "transient_back_url": reverse("transient_streams"),
+        "transient_playback_url": playback_url,
+        "movie": None,
+        "hls_playlist": playback_url,
+        "fallback_file": "",
+        "fallback_type": "",
+        "subtitles": [],
+        "saved_timestamp": 0,
+    })

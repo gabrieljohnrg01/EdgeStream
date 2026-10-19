@@ -31,6 +31,6 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name="transientstreamsession",
-            index=models.Index(fields=["user", "status"], name="library_tr_user_id_0d2e5a_idx"),
+            index=models.Index(fields=["user", "status"], name="library_tra_user_id_ecbdfb_idx"),
         ),
     ]

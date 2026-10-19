@@ -80,7 +80,7 @@ def serve_media(request, path, document_root=None):
 from rest_framework import routers
 from library.api import MovieViewSet, SeriesViewSet, SeasonViewSet, EpisodeViewSet, RegisterUserAPIView, WatchlistViewSet, ChangePasswordView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from library.api import TransientStreamSessionListCreateAPIView, TransientStreamSessionDetailAPIView
+from library.api import TransientStreamSessionListCreateAPIView, TransientStreamSessionDetailAPIView, TransientHLSAssetAPIView
 import library.views
 
 import mimetypes
@@ -178,6 +178,7 @@ urlpatterns = [
     path("api/token/", TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path("api/transient-streams/", TransientStreamSessionListCreateAPIView.as_view(), name="transient_stream_list_create"),
     path("api/transient-streams/<uuid:session_id>/", TransientStreamSessionDetailAPIView.as_view(), name="transient_stream_detail"),
+    path("api/transient-streams/<uuid:session_id>/hls/<str:asset_name>", TransientHLSAssetAPIView.as_view(), name="transient_stream_hls_asset"),
     path("api/token/refresh/", TokenRefreshView.as_view(), name='token_refresh'),
     path("api/register/", RegisterUserAPIView.as_view(), name='register'),
     path("api/change-password/", ChangePasswordView.as_view(), name='change_password'),

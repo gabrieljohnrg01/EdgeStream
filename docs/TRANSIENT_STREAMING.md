@@ -28,6 +28,34 @@ The authenticated endpoints are now registered:
 
 Creation is limited to two unexpired pending/starting/active sessions per user and gives each session a three-hour TTL. Responses do not expose magnet URIs. Other users' session IDs return 404. **These endpoints only manage session metadata: creation does not download a torrent or return a playable URL until the worker is implemented.**
 
+## Opt-in worker autostart
+
+Session creation can launch the torrent/HLS worker as a separate backend process when
+`TRANSIENT_STREAM_WORKERS_ENABLED=true`. It is disabled by default so deployments
+that have not installed the native torrent binding do not launch failing workers.
+The child process log is written to `worker.log` inside the session's private output
+directory; it is not exposed by the HLS asset endpoint.
+
+On Debian/Ubuntu hosts, install the native dependencies:
+
+```bash
+sudo apt update
+sudo apt install ffmpeg python3-libtorrent
+```
+
+If Django runs in a virtual environment, ensure that environment can import the
+OS-provided `libtorrent` binding (for example, create the venv with
+`--system-site-packages`, or use a compatible package for the exact Python version).
+Then set `TRANSIENT_STREAM_WORKERS_ENABLED=true` in the backend environment and
+restart the Django service. Ensure the configured `TRANSIENT_STREAM_ROOT` is writable
+only by the backend service account and has enough disk space. Do not enable autostart
+until the native binding and FFmpeg are installed.
+
+The worker currently downloads the chosen video file to completion before launching
+FFmpeg. It does not yet implement immediate playback during torrent download or
+piece-deadline-based random seeking. A three-hour session TTL and two-session per-user
+limit remain in effect.
+
 ## FFmpeg rendering stage
 
 `python manage.py run_transient_hls <session-uuid> --source <relative-video-path>` renders a **completed** video already placed inside that session's isolated directory into an event-style HLS playlist and four-second MPEG-TS segments. It copies the video stream and transcodes audio to AAC, then marks the session ACTIVE once the playlist and first segment exist. The command monitors the session record and terminates FFmpeg when the session is stopped or expires. FFmpeg must be installed on the host; `FFMPEG_BINARY` can override its executable path.

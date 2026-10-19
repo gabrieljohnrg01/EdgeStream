@@ -74,6 +74,8 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", str(BASE_DIR / "media")))
 HLS_ROOT = Path(os.environ.get("HLS_ROOT", str(MEDIA_ROOT / "hls")))
+# Separate from permanent media/HLS roots; transient session output is disposable.
+TRANSIENT_STREAM_ROOT = Path(os.environ.get("TRANSIENT_STREAM_ROOT", str(BASE_DIR / "transient_streams")))
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "False").lower() in ["1", "true", "yes"]

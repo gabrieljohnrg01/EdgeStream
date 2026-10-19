@@ -28,6 +28,12 @@ The authenticated endpoints are now registered:
 
 Creation is limited to two unexpired pending/starting/active sessions per user and gives each session a three-hour TTL. Responses do not expose magnet URIs. Other users' session IDs return 404. **These endpoints only manage session metadata: creation does not download a torrent or return a playable URL until the worker is implemented.**
 
+## FFmpeg rendering stage
+
+`python manage.py run_transient_hls <session-uuid> --source <relative-video-path>` renders a **completed** video already placed inside that session's isolated directory into an event-style HLS playlist and four-second MPEG-TS segments. It copies the video stream and transcodes audio to AAC, then marks the session ACTIVE once the playlist and first segment exist. The command monitors the session record and terminates FFmpeg when the session is stopped or expires. FFmpeg must be installed on the host; `FFMPEG_BINARY` can override its executable path.
+
+This is only the FFmpeg stage. There is not yet a torrent downloader that places a completed source into the session directory or automatically launches this command. It does not provide instant torrent-to-HLS playback while the torrent is downloading.
+
 ## HLS asset delivery
 
 The authenticated session detail endpoint now returns a short-lived `playback_url`

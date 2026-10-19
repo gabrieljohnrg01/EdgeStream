@@ -1,7 +1,10 @@
 import re
+import subprocess
+import sys
 from datetime import timedelta
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.utils import timezone
 from django.http import FileResponse, Http404, HttpResponse
 from django.core import signing
@@ -14,7 +17,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Movie, Series, Season, Episode, WatchlistItem, TransientStreamSession
 from .serializers import MovieSerializer, SeriesSerializer, SeasonSerializer, EpisodeSerializer, UserRegistrationSerializer, WatchlistItemSerializer, ChangePasswordSerializer
 from .transient_streaming import validate_magnet_uri
-from .transient_streaming_runtime import resolve_hls_asset
+from .transient_streaming_runtime import resolve_hls_asset, session_output_dir
 
 
 def expire_transient_sessions(queryset=None):
@@ -141,10 +144,46 @@ class TransientStreamSessionListCreateAPIView(APIView):
             expires_at=now + self.SESSION_TTL,
             status=TransientStreamSession.STATUS_PENDING,
         )
+        worker_started = False
+        if getattr(settings, "TRANSIENT_STREAM_WORKERS_ENABLED", False):
+            try:
+                worker_dir = session_output_dir(session.pk)
+                worker_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                log_path = worker_dir / "worker.log"
+                with open(log_path, "ab") as worker_log:
+                    subprocess.Popen(
+                        [
+                            sys.executable,
+                            str(settings.BASE_DIR / "manage.py"),
+                            "download_transient_torrent",
+                            str(session.pk),
+                        ],
+                        cwd=str(settings.BASE_DIR),
+                        stdin=subprocess.DEVNULL,
+                        stdout=worker_log,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                        close_fds=True,
+                    )
+                session.status = TransientStreamSession.STATUS_STARTING
+                session.save(update_fields=["status"])
+                worker_started = True
+            except OSError:
+                session.status = TransientStreamSession.STATUS_FAILED
+                session.last_error = "Could not start the transient worker process."
+                session.magnet_uri = ""
+                session.save(update_fields=["status", "last_error", "magnet_uri"])
+
+        detail = (
+            "Worker started. Playback becomes available when the selected file is downloaded and HLS output is ready."
+            if worker_started else
+            "Session created but worker autostart is disabled. Enable TRANSIENT_STREAM_WORKERS_ENABLED and install FFmpeg plus Python libtorrent on the backend host."
+        )
         return Response({
             **self.serialize_session(session),
             "playback_ready": False,
-            "detail": "Session metadata created. Torrent/FFmpeg worker is not configured yet; this session cannot play media yet.",
+            "worker_started": worker_started,
+            "detail": detail,
         }, status=status.HTTP_201_CREATED)
 
     @staticmethod

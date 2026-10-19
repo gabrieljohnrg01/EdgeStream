@@ -83,6 +83,19 @@ class CatalogProgressAPIView(APIView):
         row, _ = PlaybackProgress.objects.update_or_create(user=request.user, catalog_title=title, defaults={"timestamp": timestamp, "is_finished": bool(request.data.get("is_finished", False))})
         return Response({"tmdb_id": title.tmdb_id, "media_type": title.media_type, "timestamp": row.timestamp, "is_finished": row.is_finished})
 
+def expire_transient_sessions(queryset=None):
+    """Expire stale session metadata without touching filesystem paths."""
+    now = timezone.now()
+    sessions = queryset if queryset is not None else TransientStreamSession.objects.all()
+    active_statuses = [TransientStreamSession.STATUS_PENDING, TransientStreamSession.STATUS_STARTING, TransientStreamSession.STATUS_ACTIVE]
+    sessions.filter(expires_at__lte=now, status__in=active_statuses).update(
+        status=TransientStreamSession.STATUS_STOPPED, stopped_at=now, magnet_uri="", selected_file=""
+    )
+    sessions.filter(expires_at__lte=now, status=TransientStreamSession.STATUS_STOPPED).exclude(magnet_uri="").update(
+        magnet_uri="", selected_file=""
+    )
+
+
 class TransientStreamSessionListCreateAPIView(APIView):
     """Owner-scoped session metadata API; no torrent worker is launched by this endpoint yet."""
     permission_classes = [IsAuthenticated]

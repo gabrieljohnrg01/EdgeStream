@@ -17,6 +17,18 @@ and deletes its source file after a successful conversion.
 - The frontend may be deployed separately from the backend; API URLs, CORS, and
   temporary HLS URLs therefore need explicit configuration and access controls.
 
+## Session persistence and expiry
+
+`TransientStreamSession` now provides a separate owner-scoped database record with a UUID, lifecycle status, expiry timestamp, and private magnet metadata. The `cleanup_transient_streams` management command marks expired sessions stopped and scrubs their magnet/file metadata. It intentionally does not delete any media files. A future worker supervisor must terminate its child process and remove only the validated session directory before physical cleanup can safely be enabled.
+
+Example maintenance command:
+
+```bash
+python manage.py cleanup_transient_streams
+```
+
+Schedule this command periodically after deployment. It is metadata cleanup only at this stage; the torrent/FFmpeg worker and session HTTP endpoints are not implemented yet.
+
 ## Initial pure helpers
 
 `library.transient_streaming` provides deterministic helpers for validating a magnet

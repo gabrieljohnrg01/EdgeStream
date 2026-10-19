@@ -28,6 +28,23 @@ The authenticated endpoints are now registered:
 
 Creation is limited to two unexpired pending/starting/active sessions per user and gives each session a three-hour TTL. Responses do not expose magnet URIs. Other users' session IDs return 404. **These endpoints only manage session metadata: creation does not download a torrent or return a playable URL until the worker is implemented.**
 
+## HLS asset delivery
+
+The authenticated session detail endpoint now returns a short-lived `playback_url`
+when a session is ACTIVE. The URL is signed for ten minutes so native HLS clients
+that cannot attach the application's Bearer token to each segment request can play
+the playlist. The playlist handler rewrites only allowlisted `segment_00000.ts`
+style references and propagates the signed token. Assets are owner-scoped, checked
+against session status and expiry, restricted to a fixed filename allowlist, and
+sent with `Cache-Control: no-store` headers.
+
+This is delivery plumbing only. A worker must create a valid `index.m3u8` and
+matching segment files inside the session's directory before the API will serve them.
+The current code does not yet launch libtorrent or FFmpeg, and it does not claim a
+session is playable before the worker sets it ACTIVE. The output root is configured
+by `TRANSIENT_STREAM_ROOT` and defaults to `BASE_DIR/transient_streams`, outside
+the permanent media/HLS directories.
+
 ## Session persistence and expiry
 
 `TransientStreamSession` now provides a separate owner-scoped database record with a UUID, lifecycle status, expiry timestamp, and private magnet metadata. The `cleanup_transient_streams` management command marks expired sessions stopped and scrubs their magnet/file metadata. It intentionally does not delete any media files. A future worker supervisor must terminate its child process and remove only the validated session directory before physical cleanup can safely be enabled.

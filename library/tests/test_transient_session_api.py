@@ -1,7 +1,10 @@
+import tempfile
 from datetime import timedelta
+from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -63,3 +66,18 @@ class TransientSessionAPITests(TestCase):
         self.client.force_authenticate(user=None)
         response = self.client.post(reverse("transient_stream_list_create"), {"magnet_uri": MAGNET}, format="json")
         self.assertEqual(response.status_code, 401)
+
+    def test_worker_autostart_is_opt_in_and_uses_managed_process(self):
+        with tempfile.TemporaryDirectory() as root, override_settings(
+            TRANSIENT_STREAM_WORKERS_ENABLED=True,
+            TRANSIENT_STREAM_ROOT=Path(root),
+        ), patch("library.api.subprocess.Popen") as popen:
+            response = self.client.post(
+                reverse("transient_stream_list_create"),
+                {"magnet_uri": MAGNET},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.data["worker_started"])
+        self.assertEqual(response.data["status"], TransientStreamSession.STATUS_STARTING)
+        popen.assert_called_once()

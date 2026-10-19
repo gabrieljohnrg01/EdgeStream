@@ -53,3 +53,14 @@ class TransientHLSAssetTests(TestCase):
         self.session.status = TransientStreamSession.STATUS_STOPPED
         self.session.save(update_fields=['status'])
         self.assertEqual(self.client.get(self.url()).status_code, 404)
+
+    def test_signed_url_works_without_login_and_carries_token_to_segments(self):
+        from library.api import TransientHLSAssetAPIView
+        from urllib.parse import urlencode
+
+        token = TransientHLSAssetAPIView.make_token(self.session)
+        self.client.force_authenticate(user=None)
+        response = self.client.get(self.url() + "?" + urlencode({"token": token}))
+        self.assertEqual(response.status_code, 200)
+        playlist = b"".join(response.streaming_content).decode("utf-8")
+        self.assertIn("segment_00000.ts?token=", playlist)

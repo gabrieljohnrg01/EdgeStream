@@ -270,7 +270,7 @@ class TransientHLSAssetAPIView(APIView):
                 else:
                     # Drop URI references that are outside the supported HLS allowlist.
                     continue
-            response = HttpResponse("\\n".join(lines) + "\\n", content_type="application/vnd.apple.mpegurl")
+            response = HttpResponse("\n".join(lines) + "\n", content_type="application/vnd.apple.mpegurl")
         else:
             response = FileResponse(open(asset, "rb"), content_type="video/mp2t")
         response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"

@@ -35,7 +35,7 @@ class TransientHLSAssetTests(TestCase):
         response = self.client.get(self.url())
         self.assertEqual(response.status_code, 200)
         self.assertIn('no-store', response['Cache-Control'])
-        self.assertEqual(b''.join(response.streaming_content), b'#EXTM3U\n#EXTINF:4.0,\nsegment_00000.ts\n')
+        self.assertEqual(response.content, b'#EXTM3U\n#EXTINF:4.0,\nsegment_00000.ts\n')
 
     def test_owner_can_get_allowlisted_segment(self):
         response = self.client.get(self.url('segment_00000.ts'))
@@ -62,5 +62,5 @@ class TransientHLSAssetTests(TestCase):
         self.client.force_authenticate(user=None)
         response = self.client.get(self.url() + "?" + urlencode({"token": token}))
         self.assertEqual(response.status_code, 200)
-        playlist = b"".join(response.streaming_content).decode("utf-8")
+        playlist = response.content.decode("utf-8")
         self.assertIn("segment_00000.ts?token=", playlist)

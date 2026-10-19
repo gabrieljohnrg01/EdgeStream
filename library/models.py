@@ -235,3 +235,47 @@ class TransientStreamSession(models.Model):
     def __str__(self):
         return f"Transient stream {self.pk} ({self.status})"
 
+
+
+class CatalogTitle(models.Model):
+    """TMDB metadata catalog entry; deliberately independent of local playable files."""
+    MEDIA_MOVIE = "MOVIE"
+    MEDIA_TV = "TV"
+    MEDIA_CHOICES = [(MEDIA_MOVIE, "Movie"), (MEDIA_TV, "TV Show")]
+
+    tmdb_id = models.PositiveIntegerField()
+    media_type = models.CharField(max_length=8, choices=MEDIA_CHOICES)
+    title = models.CharField(max_length=255, db_index=True)
+    original_title = models.CharField(max_length=255, blank=True)
+    overview = models.TextField(blank=True)
+    poster_path = models.CharField(max_length=255, blank=True)
+    backdrop_path = models.CharField(max_length=255, blank=True)
+    release_date = models.DateField(null=True, blank=True)
+    original_language = models.CharField(max_length=12, blank=True)
+    vote_average = models.FloatField(default=0)
+    vote_count = models.PositiveIntegerField(default=0)
+    popularity = models.FloatField(default=0)
+    genre_ids = models.JSONField(default=list, blank=True)
+    sections = models.JSONField(default=list, blank=True)
+    last_synced = models.DateTimeField(default=timezone.now, db_index=True)
+
+    class Meta:
+        ordering = ["-popularity", "title"]
+        constraints = [
+            models.UniqueConstraint(fields=["media_type", "tmdb_id"], name="unique_catalog_media_tmdb_id")
+        ]
+        indexes = [
+            models.Index(fields=["media_type", "-popularity"]),
+            models.Index(fields=["media_type", "vote_average"]),
+        ]
+
+    @property
+    def poster_url(self):
+        return f"https://image.tmdb.org/t/p/w500{self.poster_path}" if self.poster_path else ""
+
+    @property
+    def backdrop_url(self):
+        return f"https://image.tmdb.org/t/p/w1280{self.backdrop_path}" if self.backdrop_path else ""
+
+    def __str__(self):
+        return f"{self.title} ({self.media_type}, TMDB {self.tmdb_id})"

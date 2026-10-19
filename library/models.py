@@ -265,8 +265,8 @@ class CatalogTitle(models.Model):
             models.UniqueConstraint(fields=["media_type", "tmdb_id"], name="unique_catalog_media_tmdb_id")
         ]
         indexes = [
-            models.Index(fields=["media_type", "-popularity"]),
-            models.Index(fields=["media_type", "vote_average"]),
+            models.Index(fields=["media_type", "-popularity"], name="catalog_media_pop_idx"),
+            models.Index(fields=["media_type", "vote_average"], name="catalog_media_vote_idx"),
         ]
 
     @property

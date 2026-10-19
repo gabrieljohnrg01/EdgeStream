@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
+import uuid
 class Genre(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
@@ -216,7 +217,7 @@ class TransientStreamSession(models.Model):
         (STATUS_FAILED, "Failed"),
     ]
 
-    id = models.UUIDField(primary_key=True, default=__import__("uuid").uuid4, editable=False)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transient_stream_sessions")
     # Kept out of API representations and logs; delete/expire session data promptly.
     magnet_uri = models.TextField()

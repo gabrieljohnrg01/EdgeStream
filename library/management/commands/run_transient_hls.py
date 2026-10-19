@@ -81,8 +81,7 @@ class Command(BaseCommand):
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
+            stderr=subprocess.DEVNULL,
             start_new_session=True,
         )
         activated = False
@@ -97,6 +96,11 @@ class Command(BaseCommand):
                     except subprocess.TimeoutExpired:
                         os.killpg(process.pid, signal.SIGKILL)
                         process.wait(timeout=5)
+                    if session.status != TransientStreamSession.STATUS_STOPPED:
+                        session.status = TransientStreamSession.STATUS_STOPPED
+                        session.stopped_at = timezone.now()
+                        session.magnet_uri = ""
+                        session.save(update_fields=["status", "stopped_at", "magnet_uri"])
                     return
 
                 ready = playlist.is_file() and any(directory.glob("segment_[0-9][0-9][0-9][0-9][0-9].ts"))
@@ -116,12 +120,11 @@ class Command(BaseCommand):
                     raise CommandError("FFmpeg did not produce a playlist and segment before the startup timeout.")
                 time.sleep(0.5)
 
-            stderr = process.stderr.read()[-4000:] if process.stderr else ""
             if process.returncode != 0:
                 session.refresh_from_db()
                 if session.status != TransientStreamSession.STATUS_STOPPED:
                     session.status = TransientStreamSession.STATUS_FAILED
-                    session.last_error = (stderr or f"FFmpeg exited with code {process.returncode}")[-500:]
+                    session.last_error = f"FFmpeg exited with code {process.returncode}"[-500:]
                     session.magnet_uri = ""
                     session.save(update_fields=["status", "last_error", "magnet_uri"])
                 raise CommandError(f"FFmpeg failed (exit {process.returncode}). Check server logs for details.")
@@ -140,5 +143,3 @@ class Command(BaseCommand):
                     except ProcessLookupError:
                         pass
                     process.wait()
-            if process.stderr:
-                process.stderr.close()

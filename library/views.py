@@ -19,7 +19,7 @@ from django.contrib.auth.decorators import login_required
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
-from .models import Movie, Series, Season, Episode, MediaItem, ConversionTask, WatchlistItem, PlaybackProgress, Genre, TransientStreamSession
+from .models import Movie, Series, Season, Episode, MediaItem, ConversionTask, WatchlistItem, PlaybackProgress, Genre, TransientStreamSession, CatalogTitle
 from .tmdb import TMDB_IMAGE_BASE, clean_title, extract_title_year, fetch_tmdb_metadata, parse_date
 
 def webview_login(request):
@@ -771,4 +771,35 @@ def transient_stream_playback(request, session_id):
         "fallback_type": "",
         "subtitles": [],
         "saved_timestamp": 0,
+    })
+
+
+def tmdb_catalog_view(request):
+    """Browse cached TMDB metadata without implying that entries have playable local files."""
+    query = (request.GET.get("q") or "").strip()[:100]
+    media_type = request.GET.get("type", "ALL").upper()
+    section = request.GET.get("section", "trending")
+    valid_sections = {
+        "trending": ("trending_movies", "trending_tv"),
+        "popular": ("popular_movies", "popular_tv"),
+        "top_rated": ("top_rated_movies", "top_rated_tv"),
+        "upcoming": ("upcoming_movies",),
+    }
+    if section not in valid_sections:
+        section = "trending"
+
+    titles = CatalogTitle.objects.all()
+    if media_type in (CatalogTitle.MEDIA_MOVIE, CatalogTitle.MEDIA_TV):
+        titles = titles.filter(media_type=media_type)
+    if query:
+        titles = titles.filter(title__icontains=query)
+    else:
+        titles = titles.filter(sections__overlap=valid_sections[section])
+
+    titles = titles.order_by("-popularity", "title")[:120]
+    return render(request, "library/tmdb_catalog.html", {
+        "catalog_titles": titles,
+        "catalog_query": query,
+        "catalog_type": media_type,
+        "catalog_section": section,
     })

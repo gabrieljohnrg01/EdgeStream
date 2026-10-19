@@ -7,3 +7,4 @@ imageio-ffmpeg
 djangorestframework
 djangorestframework-simplejwt
 django-cors-headers
+Pillow>=10.0.0

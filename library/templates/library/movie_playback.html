@@ -862,7 +862,7 @@ video.addEventListener('timeupdate', () => {
             },
             body: JSON.stringify({
                 type: 'movie',
-                id: {{ movie.pk }},
+                id: {% if movie %}{{ movie.pk }}{% else %}null{% endif %},
                 timestamp: currentTime,
                 is_finished: isFinished
             })

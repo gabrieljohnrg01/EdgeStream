@@ -793,10 +793,13 @@ def tmdb_catalog_view(request):
         titles = titles.filter(media_type=media_type)
     if query:
         titles = titles.filter(title__icontains=query)
+        titles = list(titles.order_by("-popularity", "title")[:120])
     else:
-        titles = titles.filter(sections__overlap=valid_sections[section])
-
-    titles = titles.order_by("-popularity", "title")[:120]
+        wanted_sections = valid_sections[section]
+        titles = [
+            title for title in titles.order_by("-popularity", "title")
+            if any(item in (title.sections or []) for item in wanted_sections)
+        ][:120]
     return render(request, "library/tmdb_catalog.html", {
         "catalog_titles": titles,
         "catalog_query": query,

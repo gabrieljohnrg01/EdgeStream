@@ -1,0 +1,145 @@
+{% extends "library/base.html" %}
+{% block content %}
+<style>
+.transient-wrap{max-width:980px;margin:0 auto;padding:24px 8px;color:var(--text-soft-white,#f5f5f5)}
+.transient-panel{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:24px;margin:18px 0}
+.transient-muted{color:var(--text-muted-gray,#aaa);line-height:1.6}
+.transient-input{width:100%;box-sizing:border-box;background:#111;color:#fff;border:1px solid #444;border-radius:8px;padding:13px;margin:10px 0 14px}
+.transient-btn{background:var(--accent-crimson,#e50914);border:0;color:white;border-radius:8px;padding:12px 18px;font-weight:700;cursor:pointer}
+.transient-btn.secondary{background:#343434}.transient-btn:disabled{opacity:.55;cursor:wait}
+.transient-status{margin-top:14px;white-space:pre-wrap;color:#ddd}
+.transient-session{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,.09)}
+.transient-session:last-child{border-bottom:0}
+@media(max-width:650px){.transient-panel{padding:16px}.transient-session{align-items:flex-start;flex-direction:column}}
+</style>
+<div class="transient-wrap">
+  <h1>Transient Streams</h1>
+  <p class="transient-muted">Play a temporary torrent stream through EdgeStream’s existing video player. These sessions are separate from your permanent movie and episode library and expire automatically.</p>
+  <section class="transient-panel">
+    <h2 style="margin-top:0">Start a stream</h2>
+    <form id="transient-form">
+      {% csrf_token %}
+      <label for="magnet-uri">Magnet link</label>
+      <input class="transient-input" id="magnet-uri" name="magnet_uri" type="url" placeholder="magnet:?xt=urn:btih:…" required autocomplete="off">
+      <button class="transient-btn" id="start-button" type="submit">Start temporary stream</button>
+    </form>
+    <div id="transient-status" class="transient-status" role="status" aria-live="polite"></div>
+    <p class="transient-muted">Only stream content you have the right to access. Playback becomes available when the backend worker has downloaded the selected video and generated the HLS playlist. This first version does not play before the selected file finishes downloading.</p>
+  </section>
+  <section class="transient-panel">
+    <h2 style="margin-top:0">Recent sessions</h2>
+    <div id="session-list">
+      {% for session in sessions %}
+      <div class="transient-session" data-session-id="{{ session.pk }}">
+        <div><strong>{{ session.selected_file|default:"Temporary stream" }}</strong><div class="transient-muted">{{ session.status }} · expires {{ session.expires_at|date:"M j, H:i" }}</div></div>
+        <button type="button" class="transient-btn secondary stop-session" data-session-id="{{ session.pk }}">Stop</button>
+      </div>
+      {% empty %}
+      <p class="transient-muted">No temporary sessions yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  const apiUrl = "{{ session_api_url|escapejs }}";
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]')?.value || "{{ csrf_token }}";
+  const form = document.getElementById("transient-form");
+  const input = document.getElementById("magnet-uri");
+  const button = document.getElementById("start-button");
+  const statusBox = document.getElementById("transient-status");
+  const list = document.getElementById("session-list");
+  let polling = false;
+
+  async function api(url, options = {}) {
+    const response = await fetch(url, {
+      credentials: "same-origin",
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrf,
+        ...(options.headers || {})
+      }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || data.error || "Request failed (" + response.status + ")");
+    return data;
+  }
+
+  function renderSessions(sessions) {
+    if (!sessions.length) {
+      list.innerHTML = '<p class="transient-muted">No temporary sessions yet.</p>';
+      return;
+    }
+    list.innerHTML = sessions.map(s => {
+      const title = (s.selected_file || "Temporary stream").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+      const date = s.expires_at ? new Date(s.expires_at).toLocaleString() : "";
+      return '<div class="transient-session" data-session-id="' + s.id + '"><div><strong>' + title + '</strong><div class="transient-muted">' + s.status + ' · expires ' + date + '</div></div><button type="button" class="transient-btn secondary stop-session" data-session-id="' + s.id + '">Stop</button></div>';
+    }).join("");
+  }
+
+  async function refreshSessions() {
+    try { renderSessions(await api(apiUrl, {method:"GET", headers:{}})); } catch (_) {}
+  }
+
+  async function pollSession(id) {
+    if (!polling) return;
+    try {
+      const s = await api(apiUrl + encodeURIComponent(id) + "/", {method:"GET", headers:{}});
+      statusBox.textContent = "Session status: " + s.status + (s.selected_file ? "\nSelected file: " + s.selected_file : "") + "\nWaiting for HLS playback to become ready…";
+      await refreshSessions();
+      if (s.playback_ready && s.playback_url) {
+        statusBox.textContent = "Stream ready. Opening EdgeStream player…";
+        window.location.assign("/transient-streams/" + encodeURIComponent(id) + "/play/");
+        return;
+      }
+      if (["FAILED","STOPPED"].includes(s.status)) {
+        statusBox.textContent = "Session " + s.status.toLowerCase() + ". Check the backend worker log/configuration and try again.";
+        polling = false; button.disabled = false; return;
+      }
+      window.setTimeout(() => pollSession(id), 4000);
+    } catch (error) {
+      statusBox.textContent = error.message;
+      polling = false; button.disabled = false;
+    }
+  }
+
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    button.disabled = true;
+    statusBox.textContent = "Creating temporary session…";
+    try {
+      const s = await api(apiUrl, {method:"POST", body:JSON.stringify({magnet_uri:input.value.trim()})});
+      if (!s.worker_started) {
+        statusBox.textContent = s.detail || "Session created, but the backend worker is not enabled.";
+        button.disabled = false;
+        await refreshSessions();
+        return;
+      }
+      polling = true;
+      statusBox.textContent = "Worker started. Waiting for torrent metadata and the selected video…";
+      await refreshSessions();
+      pollSession(s.id);
+    } catch (error) {
+      statusBox.textContent = error.message;
+      button.disabled = false;
+    }
+  });
+
+  list.addEventListener("click", async event => {
+    const stop = event.target.closest(".stop-session");
+    if (!stop) return;
+    stop.disabled = true;
+    try {
+      await api(apiUrl + encodeURIComponent(stop.dataset.sessionId) + "/", {method:"POST", body:"{}"});
+      if (polling) { polling = false; button.disabled = false; }
+      statusBox.textContent = "Temporary session stopped.";
+      await refreshSessions();
+    } catch (error) {
+      statusBox.textContent = error.message;
+      stop.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

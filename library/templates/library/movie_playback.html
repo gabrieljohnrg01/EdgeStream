@@ -431,8 +431,8 @@ video::cue {
 <div class="fullscreen-playback">
     <div class="custom-player-container paused" id="player-container">
         <div class="playback-overlay" style="display: flex; justify-content: space-between; align-items: center;">
-            <a href="{% url 'movie_detail' movie.pk %}" class="back-link" style="flex-shrink: 0; margin-right: 20px;"><i class="bi bi-arrow-left"></i> Back to Movie</a>
-            <h2 style="color: white; margin: 0; font-weight: 400; font-size: 1.2rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;">{{ movie.title }} ({{ movie.release_date.year }})</h2>
+            <a href="{% if transient_mode %}{{ transient_back_url }}{% else %}{% url 'movie_detail' movie.pk %}{% endif %}" class="back-link" style="flex-shrink: 0; margin-right: 20px;"><i class="bi bi-arrow-left"></i> {% if transient_mode %}Back to Streams{% else %}Back to Movie{% endif %}</a>
+            <h2 style="color: white; margin: 0; font-weight: 400; font-size: 1.2rem; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;">{% if transient_mode %}{{ transient_title }}{% else %}{{ movie.title }}{% if movie.release_date %} ({{ movie.release_date.year }}){% endif %}{% endif %}</h2>
         </div>
         
         <div class="loading-spinner" id="loading-spinner">
@@ -441,14 +441,14 @@ video::cue {
             <div class="bar"></div>
             <div class="bar"></div>
         </div>
-        <video id="video-player" playsinline autoplay poster="{{ movie.poster_url }}" onclick="togglePlay()">
+        <video id="video-player" playsinline autoplay {% if not transient_mode %}poster="{{ movie.poster_url }}"{% endif %} onclick="togglePlay()">
             {% if fallback_file and not hls_playlist %}
             <source src="{{ fallback_file }}" type="{{ fallback_type }}">
             {% endif %}
             {% for sub in subtitles %}
             <track kind="subtitles" label="{{ sub.label }}" srclang="{{ sub.srclang }}" src="{{ sub.url }}" {% if forloop.first %}default{% endif %}>
             {% endfor %}
-            {% if movie.subtitle_file %}
+            {% if movie.subtitle_file and not transient_mode %}
             <track kind="subtitles" label="English" srclang="en" src="{% static movie.subtitle_file %}">
             {% endif %}
         </video>
@@ -497,7 +497,8 @@ video::cue {
 
 <script>
 const userIsRegistered = {{ request.user.is_authenticated|yesno:"true,false" }};
-const backendDuration = {{ movie.duration.total_seconds|default:"0" }};
+const backendDuration = {% if transient_mode %}0{% else %}{{ movie.duration.total_seconds|default:"0" }}{% endif %};
+const transientMode = {% if transient_mode %}true{% else %}false{% endif %};
 
 const video = document.getElementById('video-player');
 const container = document.getElementById('player-container');
@@ -526,10 +527,16 @@ function toggleAspect() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const source = '{% if hls_playlist %}{{ hls_playlist }}{% else %}{{ fallback_file|default:"" }}{% endif %}';
+    const source = '{% if transient_mode %}{{ transient_playback_url|escapejs }}{% elif hls_playlist %}{{ hls_playlist|escapejs }}{% else %}{{ fallback_file|default:""|escapejs }}{% endif %}';
     
     if (source.indexOf('.m3u8') !== -1 && Hls.isSupported()) {
-        hls = new Hls();
+        hls = new Hls({
+            enableWorker: true,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            backBufferLength: 30,
+            maxBufferHole: 0.5,
+        });
         hls.loadSource(source);
         hls.attachMedia(video);
         
@@ -554,9 +561,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-    } else if (source.indexOf('.m3u8') !== -1) {
+    } else if (source.indexOf('.m3u8') !== -1 && video.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari/iOS can play HLS natively even when MediaSource (hls.js) is unavailable.
         video.src = source;
         video.play().catch(e => console.log("Autoplay blocked:", e));
+    } else if (source.indexOf('.m3u8') !== -1) {
+        // Avoid assigning an HLS playlist to browsers that cannot play it.
+        alert("This browser cannot play HLS video. Try Safari on iPhone/iPad or a browser with MediaSource support.");
     }
 });
 
@@ -840,7 +851,7 @@ video.addEventListener('timeupdate', () => {
     
     // Sync progress every 10 seconds
     const currentTime = video.currentTime;
-    if (Math.abs(currentTime - lastSyncTime) > 10) {
+    if (userIsRegistered && !transientMode && Math.abs(currentTime - lastSyncTime) > 10) {
         lastSyncTime = currentTime;
         const isFinished = activeDuration > 0 && (activeDuration - currentTime) < 30; // mark finished if < 30s left
         fetch("{% url 'api_update_progress' %}", {
@@ -851,7 +862,7 @@ video.addEventListener('timeupdate', () => {
             },
             body: JSON.stringify({
                 type: 'movie',
-                id: {{ movie.pk }},
+                id: {% if movie %}{{ movie.pk }}{% else %}null{% endif %},
                 timestamp: currentTime,
                 is_finished: isFinished
             })

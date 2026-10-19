@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
+import uuid
 class Genre(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
@@ -195,3 +196,42 @@ class PlaybackProgress(models.Model):
         if self.episode:
             return f"{self.user.username} - {self.episode.title} ({self.timestamp}s)"
         return f"{self.user.username} - Progress"
+
+
+class TransientStreamSession(models.Model):
+    """User-owned, expiring session for temporary torrent-to-HLS playback.
+
+    This model is intentionally separate from Movie/Episode/ConversionTask so
+    transient source files can never enter the permanent library conversion path.
+    """
+    STATUS_PENDING = "PENDING"
+    STATUS_STARTING = "STARTING"
+    STATUS_ACTIVE = "ACTIVE"
+    STATUS_STOPPED = "STOPPED"
+    STATUS_FAILED = "FAILED"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_STARTING, "Starting"),
+        (STATUS_ACTIVE, "Active"),
+        (STATUS_STOPPED, "Stopped"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transient_stream_sessions")
+    # Kept out of API representations and logs; delete/expire session data promptly.
+    magnet_uri = models.TextField()
+    selected_file = models.CharField(max_length=1024, blank=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    created_at = models.DateTimeField(default=timezone.now, db_index=True)
+    expires_at = models.DateTimeField(db_index=True)
+    stopped_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "status"])]
+
+    def __str__(self):
+        return f"Transient stream {self.pk} ({self.status})"
+

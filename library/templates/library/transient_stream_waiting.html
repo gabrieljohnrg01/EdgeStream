@@ -1,0 +1,9 @@
+{% extends "library/base.html" %}
+{% block content %}
+<div style="max-width:760px;margin:40px auto;padding:28px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:14px">
+  <h1>Stream not ready yet</h1>
+  <p>The temporary stream is currently <strong>{{ session.status }}</strong>. Playback opens only after the backend has downloaded the selected video and produced the HLS playlist.</p>
+  {% if session.last_error %}<p>{{ session.last_error }}</p>{% endif %}
+  <a href="{{ back_url }}" class="btn-primary" style="display:inline-block;padding:12px 18px;border-radius:8px;text-decoration:none;color:white">Back to Transient Streams</a>
+</div>
+{% endblock %}

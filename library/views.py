@@ -805,4 +805,10 @@ def tmdb_catalog_view(request):
         "catalog_query": query,
         "catalog_type": media_type,
         "catalog_section": section,
+        "catalog_section_choices": [
+            ("trending", "Trending"),
+            ("popular", "Popular"),
+            ("top_rated", "Top Rated"),
+            ("upcoming", "Upcoming"),
+        ],
     })

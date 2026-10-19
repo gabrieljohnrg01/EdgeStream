@@ -7,10 +7,7 @@ import urllib.request
 from django.utils import timezone
 
 # If you want to override the TMDB key in production, set TMDB_API_KEY in the environment.
-TMDB_API_KEY = os.environ.get(
-    "TMDB_API_KEY",
-    "fc5229ddcee9e96a1be1b8f8535063a3",
-)
+TMDB_API_KEY = os.environ.get("TMDB_API_KEY", "").strip()
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 
 TMDB_GENRES = {
@@ -108,7 +105,7 @@ def normalize_title_for_match(title):
 
 
 def fetch_tmdb_metadata(title, media_type, year=None):
-    if not title or TMDB_API_KEY.startswith("<"):
+    if not title or not TMDB_API_KEY:
         return None
 
     endpoint = "search/movie" if media_type == "MOVIE" else "search/tv"
@@ -158,7 +155,7 @@ def parse_date(value):
 
 def fetch_season_details(tmdb_id, season_num):
     """Fetch season details from TMDB including poster_path."""
-    if TMDB_API_KEY.startswith("<"):
+    if not TMDB_API_KEY:
         return None
     
     url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_num}?api_key={TMDB_API_KEY}"
@@ -172,7 +169,7 @@ def fetch_season_details(tmdb_id, season_num):
 
 def fetch_episode_details(tmdb_id, season_num, episode_num):
     """Fetch episode details from TMDB including overview and still_path."""
-    if TMDB_API_KEY.startswith("<"):
+    if not TMDB_API_KEY:
         return None
     
     url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season_num}/episode/{episode_num}?api_key={TMDB_API_KEY}"

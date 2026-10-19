@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Movie, Series, Season, Episode, MediaItem
+from .models import Movie, Series, Season, Episode, MediaItem, CatalogTitle
 
 @admin.register(Movie)
 class MovieAdmin(admin.ModelAdmin):
@@ -27,3 +27,11 @@ class MediaItemAdmin(admin.ModelAdmin):
     search_fields = ("title",)
     list_filter = ("media_type",)
 
+
+
+@admin.register(CatalogTitle)
+class CatalogTitleAdmin(admin.ModelAdmin):
+    list_display = ("title", "media_type", "tmdb_id", "vote_average", "popularity", "last_synced")
+    search_fields = ("title", "original_title", "tmdb_id")
+    list_filter = ("media_type", "original_language")
+    readonly_fields = ("last_synced",)

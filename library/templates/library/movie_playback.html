@@ -529,7 +529,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const source = '{% if hls_playlist %}{{ hls_playlist }}{% else %}{{ fallback_file|default:"" }}{% endif %}';
     
     if (source.indexOf('.m3u8') !== -1 && Hls.isSupported()) {
-        hls = new Hls();
+        hls = new Hls({
+            enableWorker: true,
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            backBufferLength: 30,
+            maxBufferHole: 0.5,
+        });
         hls.loadSource(source);
         hls.attachMedia(video);
         

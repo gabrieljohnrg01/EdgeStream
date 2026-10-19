@@ -10,6 +10,26 @@ from .models import Movie, Series, Season, Episode, WatchlistItem, TransientStre
 from .serializers import MovieSerializer, SeriesSerializer, SeasonSerializer, EpisodeSerializer, UserRegistrationSerializer, WatchlistItemSerializer, ChangePasswordSerializer
 from .transient_streaming import validate_magnet_uri
 
+
+def expire_transient_sessions(queryset=None):
+    """Expire stale session metadata without touching filesystem paths."""
+    now = timezone.now()
+    sessions = queryset if queryset is not None else TransientStreamSession.objects.all()
+    active_statuses = [
+        TransientStreamSession.STATUS_PENDING,
+        TransientStreamSession.STATUS_STARTING,
+        TransientStreamSession.STATUS_ACTIVE,
+    ]
+    sessions.filter(expires_at__lte=now, status__in=active_statuses).update(
+        status=TransientStreamSession.STATUS_STOPPED,
+        stopped_at=now,
+        magnet_uri="",
+        selected_file="",
+    )
+    sessions.filter(expires_at__lte=now, status=TransientStreamSession.STATUS_STOPPED).exclude(
+        magnet_uri=""
+    ).update(magnet_uri="", selected_file="")
+
 class RegisterUserAPIView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
@@ -78,6 +98,7 @@ class TransientStreamSessionListCreateAPIView(APIView):
     SESSION_TTL = timedelta(hours=3)
 
     def get(self, request):
+        expire_transient_sessions(TransientStreamSession.objects.filter(user=request.user))
         sessions = TransientStreamSession.objects.filter(user=request.user).order_by("-created_at")[:50]
         return Response([self.serialize_session(session) for session in sessions])
 
@@ -92,16 +113,12 @@ class TransientStreamSessionListCreateAPIView(APIView):
             )
 
         now = timezone.now()
+        expire_transient_sessions(TransientStreamSession.objects.filter(user=request.user))
         active_statuses = [
             TransientStreamSession.STATUS_PENDING,
             TransientStreamSession.STATUS_STARTING,
             TransientStreamSession.STATUS_ACTIVE,
         ]
-        TransientStreamSession.objects.filter(
-            user=request.user,
-            expires_at__lte=now,
-            status__in=active_statuses,
-        ).update(status=TransientStreamSession.STATUS_STOPPED, stopped_at=now, magnet_uri="", selected_file="")
 
         active_count = TransientStreamSession.objects.filter(
             user=request.user, status__in=active_statuses, expires_at__gt=now
@@ -147,6 +164,7 @@ class TransientStreamSessionDetailAPIView(APIView):
             return None
 
     def get(self, request, session_id):
+        expire_transient_sessions(TransientStreamSession.objects.filter(user=request.user))
         session = self.get_object(request, session_id)
         if session is None:
             return Response({"detail": "Session not found."}, status=status.HTTP_404_NOT_FOUND)

@@ -1,7 +1,9 @@
 from datetime import timedelta
 
 from django.utils import timezone
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
+from django.core import signing
+from django.urls import reverse
 from rest_framework import viewsets, generics, status, filters
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -188,26 +190,76 @@ class TransientStreamSessionDetailAPIView(APIView):
 
 
 class TransientHLSAssetAPIView(APIView):
-    """Serve only allowlisted HLS assets from an active session owned by the caller."""
-    permission_classes = [IsAuthenticated]
+    """Serve active session HLS files using owner auth or a short-lived signed URL.
+
+    The signed URL is needed because native iOS HLS requests cannot reliably attach
+    the application's Bearer token to every playlist and segment request.
+    """
+    permission_classes = [AllowAny]
+    TOKEN_SALT = "library.transient-hls-asset"
+    TOKEN_MAX_AGE_SECONDS = 600
+
+    @classmethod
+    def make_token(cls, session):
+        return signing.dumps(
+            {"session": str(session.pk), "user": session.user_id},
+            salt=cls.TOKEN_SALT,
+            compress=True,
+        )
 
     def get(self, request, session_id, asset_name):
         now = timezone.now()
         session = TransientStreamSession.objects.filter(
             pk=session_id,
-            user=request.user,
             status=TransientStreamSession.STATUS_ACTIVE,
             expires_at__gt=now,
         ).first()
         if session is None:
             return Response({"detail": "Stream asset not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        authorized = bool(
+            getattr(request.user, "is_authenticated", False)
+            and request.user.pk == session.user_id
+        )
+        token = request.query_params.get("token", "")
+        if not authorized and token:
+            try:
+                payload = signing.loads(token, salt=self.TOKEN_SALT, max_age=self.TOKEN_MAX_AGE_SECONDS)
+                authorized = payload == {"session": str(session.pk), "user": session.user_id}
+            except (signing.BadSignature, signing.SignatureExpired, TypeError, ValueError):
+                authorized = False
+        if not authorized:
+            return Response({"detail": "Stream asset not found."}, status=status.HTTP_404_NOT_FOUND)
+
         asset = resolve_hls_asset(session.pk, asset_name)
         if asset is None:
             raise Http404("Stream asset not found.")
 
-        content_type = "application/vnd.apple.mpegurl" if asset.suffix == ".m3u8" else "video/mp2t"
-        response = FileResponse(open(asset, "rb"), content_type=content_type)
+        if asset.suffix == ".m3u8":
+            # Rewrite only allowlisted segment names so the signed token follows each
+            # request on browsers and native HLS clients. Never forward arbitrary URIs.
+            try:
+                playlist = asset.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                raise Http404("Stream asset not found.")
+            if len(playlist) > 1_000_000:
+                return Response({"detail": "Playlist too large."}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+            lines = []
+            for line in playlist.splitlines():
+                item = line.strip()
+                if not item or item.startswith("#"):
+                    lines.append(line)
+                elif re.fullmatch(r"segment_[0-9]{5}\.ts", item):
+                    if token:
+                        lines.append(f"{item}?token={token}")
+                    else:
+                        lines.append(item)
+                else:
+                    # Drop URI references that are outside the supported HLS allowlist.
+                    continue
+            response = HttpResponse("\\n".join(lines) + "\\n", content_type="application/vnd.apple.mpegurl")
+        else:
+            response = FileResponse(open(asset, "rb"), content_type="video/mp2t")
         response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response["Pragma"] = "no-cache"
         response["Expires"] = "0"

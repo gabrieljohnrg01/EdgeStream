@@ -5,7 +5,7 @@ from library.models import TransientStreamSession
 
 
 class Command(BaseCommand):
-    help = "Expire transient stream sessions and remove their isolated temporary output."
+    help = "Expire transient stream sessions and scrub metadata; does not delete files yet."
 
     def handle(self, *args, **options):
         now = timezone.now()

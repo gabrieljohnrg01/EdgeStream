@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.utils import timezone
+from django.http import FileResponse, Http404
 from rest_framework import viewsets, generics, status, filters
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,6 +10,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import Movie, Series, Season, Episode, WatchlistItem, TransientStreamSession
 from .serializers import MovieSerializer, SeriesSerializer, SeasonSerializer, EpisodeSerializer, UserRegistrationSerializer, WatchlistItemSerializer, ChangePasswordSerializer
 from .transient_streaming import validate_magnet_uri
+from .transient_streaming_runtime import resolve_hls_asset
 
 
 def expire_transient_sessions(queryset=None):
@@ -182,3 +184,32 @@ class TransientStreamSessionDetailAPIView(APIView):
             session.selected_file = ""
             session.save(update_fields=["status", "stopped_at", "magnet_uri", "selected_file"])
         return Response({"id": str(session.pk), "status": session.status, "playback_ready": False})
+
+
+
+class TransientHLSAssetAPIView(APIView):
+    """Serve only allowlisted HLS assets from an active session owned by the caller."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, session_id, asset_name):
+        now = timezone.now()
+        session = TransientStreamSession.objects.filter(
+            pk=session_id,
+            user=request.user,
+            status=TransientStreamSession.STATUS_ACTIVE,
+            expires_at__gt=now,
+        ).first()
+        if session is None:
+            return Response({"detail": "Stream asset not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        asset = resolve_hls_asset(session.pk, asset_name)
+        if asset is None:
+            raise Http404("Stream asset not found.")
+
+        content_type = "application/vnd.apple.mpegurl" if asset.suffix == ".m3u8" else "video/mp2t"
+        response = FileResponse(open(asset, "rb"), content_type=content_type)
+        response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
